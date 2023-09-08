@@ -7,4 +7,6 @@ interface ICAR is IERC20 {
     function _trade() external;
 
     function _mint(address account, uint256 value) external;
+
+    function _refund(address account, uint256 value) external;
 }

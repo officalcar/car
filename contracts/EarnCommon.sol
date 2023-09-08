@@ -6,6 +6,9 @@ contract EarnCommon {
     bool public depositsPause = false;
     bool public withdrawPause = false;
 
+    uint256 public constant peakRate = 3_000;
+    uint256 public lpHistoricalPeak;
+    uint256 public earnLpBalances;
     uint256 internal constant initDexToken = 1_000_000e18;
     uint256 internal constant initDexUsdtPrice = 325_000_000_000;
     uint8 internal constant depositsMax = 30;
@@ -23,7 +26,6 @@ contract EarnCommon {
     uint256 internal constant ethCompensationCycle = 30 days;
 
     address internal mintContract;
-    address internal usdt;
     address internal weth;
 
     mapping(address => bool) internal itemDeposits;
@@ -49,7 +51,6 @@ contract EarnCommon {
     mapping(address => uint256) public extractedSharerIncomesAmount;
     mapping(uint256 => DepositsCertificate) public depositsCertificates;
     uint256 public mintPoolValueEth;
-    uint256 public actualCompensationEthValue;
     uint256 public compensationNonce = 1;
     mapping(uint256 => uint256) public compensationValue;
     mapping(uint256 => CompensationCheckPoint) public compensationCheckPoints;
@@ -218,4 +219,5 @@ contract EarnCommon {
         uint256 amount
     );
     event CertificateEnd(uint256 serialNumber);
+    event AddLiquidity(address account, uint256 liquidity, uint256 timestamp);
 }

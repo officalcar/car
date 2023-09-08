@@ -61,11 +61,32 @@ contract CarEarn is EarnCommon {
         ].add(msg.value);
     }
 
-    function initDexPoolLiquidityETH() external {
+    function refundETH(address account, uint256 value) external {
+        require(msg.sender == mintContract);
+        require(payable(address(this)).balance >= value);
+
+        (bool refund, ) = payable(account).call{value: value}(new bytes(0));
+        require(refund);
+
+        if (mintPoolValueEth > value) {
+            mintPoolValueEth = mintPoolValueEth.sub(value);
+        } else {
+            mintPoolValueEth = 0;
+        }
+        if (compensationValue[compensationNonce] > value) {
+            compensationValue[compensationNonce] = compensationValue[
+                compensationNonce
+            ].sub(value);
+        } else {
+            compensationValue[compensationNonce] = 0;
+        }
+    }
+
+    function initDexPoolLiquidityETH(uint256 ethPrice) external {
         require(msg.sender == mintContract);
 
-        uint256 amountIn = (initDexUsdtPrice * 1e18) / _ethPriceDexInternal();
-        require(payable(address(this)).balance >= amountIn);
+        uint256 amountIn = (initDexUsdtPrice * 1e18) / ethPrice;
+        require(mintPoolValueEth >= amountIn);
 
         (uint amountToken, uint amountETH, uint liquidity) = suShiV2Router
             .addLiquidityETH{value: amountIn}(
@@ -81,6 +102,7 @@ contract CarEarn is EarnCommon {
         depositsStart = block.timestamp + earnPeriod;
         itemDeposits[address(carEthPair)] = true;
         itemDeposits[address(0)] = true;
+        _historicalPeakInternal(liquidity);
         emit InitDexPool(amountToken, amountETH, liquidity, block.timestamp);
 
         mintPoolValueEth = mintPoolValueEth.sub(amountETH);
@@ -129,6 +151,105 @@ contract CarEarn is EarnCommon {
         return tradeFlag && block.timestamp >= depositsStart;
     }
 
+    function calculateLiquidity(
+        address token,
+        uint256 amount
+    )
+        public
+        view
+        returns (
+            uint256 ethDesired,
+            uint256 ethMin,
+            uint256 tokenDesired,
+            uint256 tokenMin
+        )
+    {
+        (uint reserve0, uint reserve1) = _getReserves(
+            weth,
+            address(car),
+            carEthPair
+        );
+        if (reserve0 == 0 && reserve1 == 0) {
+            ethDesired = amount;
+            ethMin = amount;
+            tokenDesired = amount;
+            tokenMin = amount;
+        } else {
+            if (token == weth) {
+                uint256 desired = quote(amount, reserve0, reserve1);
+                ethDesired = amount;
+                tokenDesired = desired;
+                (uint256 ethMin0, uint256 tokenMin0) = _optimalLiquidity(
+                    weth,
+                    address(car),
+                    amount,
+                    desired
+                );
+                (uint256 tokenMin1, uint256 ethMin1) = _optimalLiquidity(
+                    address(car),
+                    weth,
+                    desired,
+                    amount
+                );
+                ethMin = ethMin0 < ethMin1 ? ethMin0 : ethMin1;
+                tokenMin = tokenMin0 < tokenMin1 ? tokenMin0 : tokenMin1;
+            } else {
+                uint256 desired = quote(amount, reserve1, reserve0);
+                ethDesired = desired;
+                tokenDesired = amount;
+                (uint256 ethMinA, uint256 tokenMinA) = _optimalLiquidity(
+                    weth,
+                    address(car),
+                    desired,
+                    amount
+                );
+                (uint256 tokenMinB, uint256 ethMinB) = _optimalLiquidity(
+                    address(car),
+                    weth,
+                    amount,
+                    desired
+                );
+                ethMin = ethMinA < ethMinB ? ethMinA : ethMinB;
+                tokenMin = tokenMinA < tokenMinB ? tokenMinA : tokenMinB;
+            }
+        }
+    }
+
+    function addliquidityETH(
+        uint amountTokenDesired,
+        uint amountTokenMin,
+        uint amountETHMin
+    ) external payable {
+        car.transferFrom(msg.sender, address(this), amountTokenDesired);
+        (uint256 liquidity, ) = _addLiquidityETH(
+            msg.value,
+            amountTokenDesired,
+            amountTokenMin,
+            amountETHMin
+        );
+        carEthPair.transfer(msg.sender, liquidity);
+        emit AddLiquidity(msg.sender, liquidity, block.timestamp);
+    }
+
+    function _historicalPeakInternal(uint256 value) internal {
+        earnLpBalances = earnLpBalances.add(value);
+        lpHistoricalPeak = lpHistoricalPeak == 0
+            ? value
+            : SafeMath.max(lpHistoricalPeak, earnLpBalances);
+    }
+
+    function currentLpRate() external view returns (bool) {
+        return _currentLpRateInternal();
+    }
+
+    function _currentLpRateInternal() internal view returns (bool) {
+        return
+            lpHistoricalPeak == 0
+                ? false
+                : (lpHistoricalPeak * peakRate).div(rateMultiple) >=
+                    earnLpBalances;
+    }
+
     function deposits(
         address item,
         uint256 value,
@@ -150,7 +271,7 @@ contract CarEarn is EarnCommon {
             );
             value = refundValue > 0 ? msg.value - refundValue : msg.value;
         } else if (address(carEthPair) == item) {
-            require(value > 0);
+            require(!_currentLpRateInternal() && value > 0);
 
             carEthPair.transferFrom(msg.sender, address(this), value);
             lpValue = value;
@@ -169,6 +290,7 @@ contract CarEarn is EarnCommon {
         );
         _accountLevelRefreshInternal(msg.sender, block.timestamp);
         _advancedLevelRefreshInternal(msg.sender, block.timestamp);
+        _historicalPeakInternal(lpValue);
         emit Deposits(
             depositsSerialNumber,
             msg.sender,
@@ -214,6 +336,15 @@ contract CarEarn is EarnCommon {
             actualToken,
             itemValue
         );
+        return _addLiquidityETH(itemValue, actualToken, amountAMin, amountBMin);
+    }
+
+    function _addLiquidityETH(
+        uint256 itemValue,
+        uint256 actualToken,
+        uint256 amountAMin,
+        uint256 amountBMin
+    ) internal returns (uint256, uint256) {
         (uint amountToken, uint amountETH, uint liquidity) = suShiV2Router
             .addLiquidityETH{value: itemValue}(
             address(car),
@@ -359,10 +490,7 @@ contract CarEarn is EarnCommon {
                 inviteRule.inviteLevel = levelOne;
                 inviteRule.rewardLevelMax = rewardLevelMax;
             } else {
-                if (
-                    inviteRule.validEleven >= 1 &&
-                    newAmount >= inviteValidMinAmount
-                ) {
+                if (inviteRule.validEleven >= 1) {
                     inviteRule.inviteLevel = levelEleven;
                     inviteRule.rewardLevelMax = rewardLevelOne;
                 }
@@ -704,7 +832,7 @@ contract CarEarn is EarnCommon {
             ].add(singleValue);
             ethValue += singleValue;
         }
-        require(ethValue > 0 && payable(address(this)).balance > ethValue);
+        require(ethValue > 0 && payable(address(this)).balance >= ethValue);
 
         (bool success, ) = msg.sender.call{value: ethValue}(new bytes(0));
         require(success);
@@ -749,13 +877,13 @@ contract CarEarn is EarnCommon {
         uint256 toWithdraw = toWithdrawCompensations[certificate.creater][
             certificate.serialNumber
         ];
-        value += totalShould.sub(toWithdraw);
+        value = totalShould.sub(toWithdraw);
     }
 
     function withdrawLP(uint256 serialNumber) external nonReentrant {
         require(!withdrawPause);
 
-        uint256 currentLpBalance = carEthPair.balanceOf(address(this));
+        uint256 currentLpBalance = earnLpBalances;
         require(currentLpBalance > 0);
 
         DepositsCertificate memory certificat = depositsCertificates[
@@ -773,6 +901,11 @@ contract CarEarn is EarnCommon {
         require(totalLp > 0);
 
         carEthPair.transfer(msg.sender, totalLp);
+        if (earnLpBalances > totalLp) {
+            earnLpBalances = earnLpBalances.sub(totalLp);
+        } else {
+            earnLpBalances = 0;
+        }
         _accountWithdrawLp(principal, interest, price, block.timestamp);
     }
 
@@ -879,7 +1012,7 @@ contract CarEarn is EarnCommon {
     function _withdrawLPInternal() internal {
         require(!withdrawPause);
 
-        uint256 currentLpBalance = carEthPair.balanceOf(address(this));
+        uint256 currentLpBalance = earnLpBalances;
         require(currentLpBalance > 0);
 
         uint256[] memory depositsSerialArrays = depositsSerials[msg.sender];
@@ -913,6 +1046,11 @@ contract CarEarn is EarnCommon {
         require(totalLp > 0);
 
         carEthPair.transfer(msg.sender, totalLp);
+        if (earnLpBalances > totalLp) {
+            earnLpBalances = earnLpBalances.sub(totalLp);
+        } else {
+            earnLpBalances = 0;
+        }
         _accountWithdrawLp(principal, interest, price, timestamp);
     }
 
@@ -1213,30 +1351,33 @@ contract CarEarn is EarnCommon {
 
     function _shareLPInternal() internal view returns (uint256 value) {
         uint256 sharerIncome = sharerIncomes[msg.sender];
-        value = (sharerIncome > 0)
+        value = (sharerIncome > extractedSharerIncomes[msg.sender])
             ? sharerIncome.sub(extractedSharerIncomes[msg.sender])
             : 0;
     }
 
     function withdrawShareLP() external nonReentrant {
         require(!withdrawPause);
+        require(earnLpBalances > 0);
 
         uint256 actual = _shareLPInternal();
         require(actual > 0);
 
-        uint256 totalLpBalance = carEthPair.balanceOf(address(this));
-        require(totalLpBalance > 0);
-
-        if (totalLpBalance > actual) {
+        if (earnLpBalances > actual) {
             _withdrawLPTransferActialInternal(actual);
         } else {
-            _withdrawLPTransferActialInternal(totalLpBalance);
+            _withdrawLPTransferActialInternal(earnLpBalances);
             _compensationSnapshotInternal();
         }
     }
 
     function _withdrawLPTransferActialInternal(uint256 actual) internal {
         carEthPair.transfer(msg.sender, actual);
+        if (earnLpBalances > actual) {
+            earnLpBalances = earnLpBalances.sub(actual);
+        } else {
+            earnLpBalances = 0;
+        }
         extractedSharerIncomes[msg.sender] = extractedSharerIncomes[msg.sender]
             .add(actual);
         (uint256 price, ) = lpPriceDex();
@@ -1265,11 +1406,16 @@ contract CarEarn is EarnCommon {
             reserve0,
             reserve1
         );
-        uint256 lpTotalPrice = (reserve0 * tokenPrice) /
-            1e18 +
-            (reserve1 * ethPrice) /
-            1e18;
-        return ((lpTotalPrice * 1e18) / carEthPair.totalSupply(), tokenPrice);
+        return (
+            2 *
+                (
+                    (SafeMath.sqrt(reserve0 * reserve1) *
+                        SafeMath.sqrt(ethPrice * tokenPrice)).div(
+                            carEthPair.totalSupply()
+                        )
+                ),
+            tokenPrice
+        );
     }
 
     function tokenPriceDex(
@@ -1441,6 +1587,7 @@ contract CarEarn is EarnCommon {
     ) internal {
         serialNumberWithdrawPrincipal[creater][serialNumber] = 0;
         serialNumberWithdrawInterest[creater][serialNumber] = 0;
+        serialNumberWithdrawAmount[creater][serialNumber] = 0;
         emit CompensationDeposits(serialNumber, newPrincipal, amount);
     }
 
@@ -1489,7 +1636,7 @@ contract CarEarn is EarnCommon {
             depositsIncomeCycle;
         serialNumberNetLoss[depositsCertificate.creater][
             depositsCertificate.serialNumber
-        ] = newPrincipal;
+        ] = depositsCertificate.amount;
         _updatePrincipalInternal(
             depositsCertificate.creater,
             depositsCertificate.serialNumber,
@@ -1514,7 +1661,6 @@ contract CarEarn is EarnCommon {
         compensationEthCertificates[serialNumber] = compensationETHCertificate;
         uint256[] storage compensationEthArrays = compensationEths[account];
         compensationEthArrays.push(serialNumber);
-        actualCompensationEthValue = actualCompensationEthValue + value;
         totalAccountCompensation[account] = totalAccountCompensation[account]
             .add(value);
     }
