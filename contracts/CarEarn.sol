@@ -25,7 +25,7 @@ contract CarEarn is EarnCommon {
         reentrant = true;
     }
 
-    address private owner;
+    address private immutable owner;
 
     constructor() {
         owner = msg.sender;
@@ -250,6 +250,15 @@ contract CarEarn is EarnCommon {
                     earnLpBalances;
     }
 
+    function _contractInternal(address account) internal view returns (bool) {
+        bytes32 codehash;
+        bytes32 accountHash = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
+        assembly {
+            codehash := extcodehash(account)
+        }
+        return (codehash != 0x0 && codehash != accountHash);
+    }
+
     function deposits(
         address item,
         uint256 value,
@@ -258,6 +267,7 @@ contract CarEarn is EarnCommon {
         require(tradeFlag && block.timestamp >= depositsStart);
         require(!depositsPause);
         require(itemDeposits[item]);
+        require(!_contractInternal(msg.sender));
         require(depositsSerials[msg.sender].length <= depositsMax);
 
         uint256 lpValue;
