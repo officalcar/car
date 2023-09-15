@@ -115,19 +115,11 @@ contract CarEarn is EarnCommon {
         return _ethPriceDexInternal();
     }
 
-    function _ethPriceDexInternal() internal view returns (uint256 price) {
-        IUniswapV3Factory factory = IUniswapV3Factory(
-            0x1F98431c8aD98523631AE4a59f267346ea31F984
-        );
-        IUniswapV3Pool pool = IUniswapV3Pool(
-            factory.getPool(
-                address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1),
-                address(0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9),
-                500
-            )
-        );
-        (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
-        return (uint(sqrtPriceX96) * (uint(sqrtPriceX96) * (1e18))) >> (96 * 2);
+    function _ethPriceDexInternal() internal view returns (uint256) {
+        int256 ethPrice = AggregatorInterface(
+            0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
+        ).latestAnswer();
+        return uint256(ethPrice);
     }
 
     function confirmInvite(address account) external {
@@ -840,6 +832,15 @@ contract CarEarn is EarnCommon {
             ] = toWithdrawCompensations[_compensationETHCertificate.creater][
                 _compensationETHCertificate.serialNumber
             ].add(singleValue);
+            if (_compensationETHCertificate.remaining > singleValue) {
+                _compensationETHCertificate
+                    .remaining = _compensationETHCertificate.remaining.sub(
+                    singleValue
+                );
+            } else {
+                _compensationETHCertificate.remaining = 0;
+            }
+
             ethValue += singleValue;
         }
         require(ethValue > 0 && payable(address(this)).balance >= ethValue);
@@ -1661,40 +1662,36 @@ contract CarEarn is EarnCommon {
         uint256 value
     ) internal {
         CompensationETHCertificate
-            memory compensationETHCertificate = CompensationETHCertificate({
-                serialNumber: serialNumber,
-                creater: account,
-                value: value,
-                startTimestamp: block.timestamp,
-                endTimestamp: block.timestamp + ethCompensationCycle
-            });
-        compensationEthCertificates[serialNumber] = compensationETHCertificate;
-        uint256[] storage compensationEthArrays = compensationEths[account];
-        compensationEthArrays.push(serialNumber);
+            storage compensationETHCertificate = compensationEthCertificates[
+                serialNumber
+            ];
+        if (compensationETHCertificate.serialNumber != serialNumber) {
+            compensationETHCertificate.serialNumber = serialNumber;
+            compensationETHCertificate.creater = account;
+            compensationETHCertificate.value = value;
+            compensationETHCertificate.remaining = value;
+        } else {
+            compensationETHCertificate.value = value.add(
+                compensationETHCertificate.remaining
+            );
+            compensationETHCertificate.remaining = compensationETHCertificate
+                .value;
+        }
+        compensationETHCertificate.startTimestamp = block.timestamp;
+        compensationETHCertificate.endTimestamp =
+            block.timestamp +
+            ethCompensationCycle;
+        if (!compensationEthFlags[account][serialNumber]) {
+            uint256[] storage compensationEthArrays = compensationEths[account];
+            compensationEthArrays.push(serialNumber);
+            compensationEthFlags[account][serialNumber] = true;
+        }
+        toWithdrawCompensations[account][serialNumber] = 0;
         totalAccountCompensation[account] = totalAccountCompensation[account]
             .add(value);
     }
 }
 
-interface IUniswapV3Pool {
-    function slot0()
-        external
-        view
-        returns (
-            uint160 sqrtPriceX96,
-            int24 tick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            uint16 observationCardinalityNext,
-            uint8 feeProtocol,
-            bool unlocked
-        );
-}
-
-interface IUniswapV3Factory {
-    function getPool(
-        address tokenA,
-        address tokenB,
-        uint24 fee
-    ) external view returns (address pool);
+interface AggregatorInterface {
+    function latestAnswer() external view returns (int256);
 }

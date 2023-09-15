@@ -40,6 +40,7 @@ contract EarnCommon {
         internal serialNumberWithdrawAmount;
     mapping(address => uint256) internal totalDepositsNetLoss;
     mapping(address => uint256[]) internal compensationEths;
+    mapping(address => mapping(uint256 => bool)) internal compensationEthFlags;
 
     uint256 public depositsSerialNumber = 1;
     mapping(address => bool) public validInvites;
@@ -94,6 +95,7 @@ contract EarnCommon {
         uint256 serialNumber;
         address creater;
         uint256 value;
+        uint256 remaining;
         uint256 startTimestamp;
         uint256 endTimestamp;
     }
