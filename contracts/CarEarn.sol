@@ -119,7 +119,7 @@ contract CarEarn is EarnCommon {
         int256 ethPrice = AggregatorInterface(
             0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
         ).latestAnswer();
-        return uint256(ethPrice);
+        return uint256(ethPrice).div(100);
     }
 
     function confirmInvite(address account) external {
