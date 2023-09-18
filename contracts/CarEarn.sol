@@ -116,9 +116,11 @@ contract CarEarn is EarnCommon {
     }
 
     function _ethPriceDexInternal() internal view returns (uint256) {
-        int256 ethPrice = AggregatorInterface(
+        (, int256 ethPrice, , , ) = AggregatorInterface(
             0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
-        ).latestAnswer();
+        ).latestRoundData();
+        require(ethPrice != 0);
+
         return uint256(ethPrice).div(100);
     }
 
@@ -1693,5 +1695,14 @@ contract CarEarn is EarnCommon {
 }
 
 interface AggregatorInterface {
-    function latestAnswer() external view returns (int256);
+    function latestRoundData()
+        external
+        view
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        );
 }
