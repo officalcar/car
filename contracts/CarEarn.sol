@@ -820,7 +820,7 @@ contract CarEarn is EarnCommon {
         uint256 ethValue;
         for (uint i = 0; i < depositsLen; i++) {
             CompensationETHCertificate
-                memory _compensationETHCertificate = compensationEthCertificates[
+                storage _compensationETHCertificate = compensationEthCertificates[
                     compensationEthArrays[i]
                 ];
             uint256 singleValue = _singleCompensationETHInternal(
@@ -890,7 +890,11 @@ contract CarEarn is EarnCommon {
         uint256 toWithdraw = toWithdrawCompensations[certificate.creater][
             certificate.serialNumber
         ];
-        value = totalShould.sub(toWithdraw);
+        if (totalShould >= toWithdraw) {
+            value = totalShould.sub(toWithdraw);
+        } else {
+            value = 0;
+        }
     }
 
     function withdrawLP(uint256 serialNumber) external nonReentrant {
