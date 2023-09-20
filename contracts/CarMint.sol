@@ -119,18 +119,8 @@ contract CarMint {
         return totalMint < tokenTradeValue && block.timestamp > mintEndTime;
     }
 
-    function _contractInternal(address account) internal view returns (bool) {
-        bytes32 codehash;
-        bytes32 accountHash = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
-        assembly {
-            codehash := extcodehash(account)
-        }
-        return (codehash != 0x0 && codehash != accountHash);
-    }
-
     function mint(uint256 value) external payable nonReentrant {
         require(!_refund(), "MINT: REFUND");
-        require(!_contractInternal(msg.sender), "MINT: CONTRACT");
 
         uint256 mintValue = value.div(10 ** decimals);
         require(mintValue > 0, "MINT: QUANTITY_MUST_BE_GREATER_THAN_ZERO");
