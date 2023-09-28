@@ -45,10 +45,14 @@ contract CarMint {
 
     address private owner;
     uint256 immutable mintEndTime;
+    uint256 immutable mintStartTime;
 
-    constructor() {
+    constructor(uint256 time_) {
+        require(time_ >= block.timestamp);
+
         owner = msg.sender;
-        mintEndTime = block.timestamp + 15 days;
+        mintStartTime = time_;
+        mintEndTime = time_ + 15 days;
     }
 
     receive() external payable {}
@@ -119,7 +123,12 @@ contract CarMint {
         return totalMint < tokenTradeValue && block.timestamp > mintEndTime;
     }
 
+    function preInformation() external view returns (bool, uint256) {
+        return (block.timestamp >= mintStartTime, mintStartTime);
+    }
+
     function mint(uint256 value) external payable nonReentrant {
+        require(block.timestamp >= mintStartTime, "MINT: HAS_NOT_STARTED");
         require(!_refund(), "MINT: REFUND");
 
         uint256 mintValue = value.div(10 ** decimals);
