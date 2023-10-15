@@ -25,9 +25,11 @@ contract CAR is ICAR {
     bool private tradeFlag;
     mapping(address => mapping(address => uint256)) internal allowances;
     mapping(address => uint256) internal _balances;
+    mapping(address => bool) public feeWhitelists;
 
     address immutable mint;
     address immutable earn;
+    address immutable feeOwner;
 
     constructor(
         address mint_,
@@ -36,11 +38,19 @@ contract CAR is ICAR {
         address developmentTeamAccount_,
         address foundationAccount_
     ) {
+        feeOwner = msg.sender;
         mint = mint_;
         earn = earn_;
         router = router_;
         developmentTeamAccount = developmentTeamAccount_;
         foundationAccount = foundationAccount_;
+    }
+
+    function _setFeeWhitelist(address account, bool flag) public {
+        require(msg.sender == feeOwner, "CAR: UNAUTHORIZED");
+        require(account.code.length != 0, "CAR: WHITELIST_INVALID");
+
+        feeWhitelists[account] = flag;
     }
 
     function _trade() external override {
@@ -148,7 +158,9 @@ contract CAR is ICAR {
             dst == earn ||
             dst == router ||
             src == developmentTeamAccount ||
-            src == foundationAccount
+            src == foundationAccount ||
+            feeWhitelists[src] ||
+            feeWhitelists[dst]
         ) {
             _balances[src] = _balances[src].sub(amount);
             _balances[dst] = _balances[dst].add(amount);
