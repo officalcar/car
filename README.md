@@ -1,16 +1,16 @@
 # CAR
-CAR contract address: `-`
+CAR contract address: `0x7BaCD1860a35864a0c394a9cF9bb949899345ead`
 
-[View on arbiscan](https://arbiscan.io/)
+[View on arbiscan](https://arbiscan.io/0x7BaCD1860a35864a0c394a9cF9bb949899345ead)
 
-CAR-ETH Sushi V2 Pool: ``
+CAR-ETH Sushi V2 Pool: `0xCb2C8210e7dAd0d8793dA18c7c3a548b51AC7E8a`
 
-[View on arbiscan](https://arbiscan.io/)
+[View on arbiscan](https://arbiscan.io/0xCb2C8210e7dAd0d8793dA18c7c3a548b51AC7E8a)
 
 ## Mint
-Contract address: ``
+Contract address: `0xb4615f8eeBbCc9B17C268d3a358A6b56eE10A38D`
 
-[View on arbiscan](https://arbiscan.io/)
+[View on arbiscan](https://arbiscan.io/0xb4615f8eeBbCc9B17C268d3a358A6b56eE10A38D)
 
 ### Function
 #### Get the current coin price
