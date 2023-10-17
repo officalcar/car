@@ -37,9 +37,9 @@ function mint(uint256 value) external payable;
 | `value` | `uint256` | `mint number, need to zoom in 1e18` |
 
 ## LP Earn
-Contract address: ``
+Contract address: `0x134B3AEa5b46b85a1F10c49474703493f52e027b`
 
-[View on arbiscan](https://arbiscan.io/)
+[View on arbiscan](https://arbiscan.io/address/0x134B3AEa5b46b85a1F10c49474703493f52e027b)
 
 ### Function
 #### Confirm invite
